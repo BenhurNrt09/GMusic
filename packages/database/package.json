@@ -1,0 +1,13 @@
+{
+    "name": "@gmusic/database",
+    "version": "0.0.1",
+    "private": true,
+    "main": "./index.ts",
+    "types": "./index.ts",
+    "dependencies": {
+        "@supabase/supabase-js": "^2.39.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.3.3"
+    }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "gmusic",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "dev:web": "turbo run dev --filter=@gmusic/web",
+    "dev:admin": "turbo run dev --filter=@gmusic/admin",
+    "build:web": "turbo run build --filter=@gmusic/web",
+    "build:admin": "turbo run build --filter=@gmusic/admin"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.3.3"
+  },
+  "packageManager": "npm@10.2.0"
+}
