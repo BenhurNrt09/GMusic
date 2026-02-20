@@ -25,6 +25,7 @@ export default function SongCard({ song, songs }: SongCardProps) {
         if (isCurrentSong) {
             togglePlay();
         } else {
+            // Pass the songs array if available, otherwise just the single song
             playSong(song, songs || [song]);
         }
     };

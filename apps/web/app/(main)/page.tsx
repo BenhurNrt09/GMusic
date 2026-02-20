@@ -62,7 +62,10 @@ function CardSkeleton() {
 // Filter chips for mobile
 const filterTabs = ['Tümü', 'Müzik', 'Podcast\'ler'];
 
+import { useRouter } from 'next/navigation';
+
 export default function HomePage() {
+    const router = useRouter();
     const [songs, setSongs] = useState<Song[]>([]);
     const [artists, setArtists] = useState<Artist[]>([]);
     const [albums, setAlbums] = useState<Album[]>([]);
@@ -91,6 +94,34 @@ export default function HomePage() {
             }
         }
         fetchData();
+
+        // Real-time listener for play count updates
+        const channel = supabase
+            .channel('home_songs_updates')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'songs',
+                },
+                (payload: any) => {
+                    setSongs((currentSongs) => {
+                        const songExists = currentSongs.some(s => s.id === payload.new.id);
+                        if (!songExists) return currentSongs;
+
+                        const updatedSongs = currentSongs.map((s) =>
+                            s.id === payload.new.id ? { ...s, plays: payload.new.plays } : s
+                        );
+                        return [...updatedSongs].sort((a, b) => (b.plays || 0) - (a.plays || 0));
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const getGreeting = () => {
@@ -134,9 +165,21 @@ export default function HomePage() {
                         ))
                     ) : (
                         <>
-                            <QuickPlayCard title="Beğenilen Şarkılar" gradient="bg-gradient-to-br from-purple-500 to-blue-400" />
-                            <QuickPlayCard title="Daily Mix 1" gradient="bg-gradient-to-br from-[#c68cfa] to-purple-800" />
-                            <QuickPlayCard title="Discover Weekly" gradient="bg-gradient-to-br from-emerald-500 to-teal-700" />
+                            <QuickPlayCard
+                                title="Beğenilen Şarkılar"
+                                gradient="bg-gradient-to-br from-purple-500 to-blue-400"
+                                onClick={() => router.push('/liked')}
+                            />
+                            <QuickPlayCard
+                                title="Daily Mix 1"
+                                gradient="bg-gradient-to-br from-[#c68cfa] to-purple-800"
+                                onClick={() => router.push('/mix/daily-mix-1')}
+                            />
+                            <QuickPlayCard
+                                title="Discover Weekly"
+                                gradient="bg-gradient-to-br from-emerald-500 to-teal-700"
+                                onClick={() => router.push('/mix/discover-weekly')}
+                            />
                             {songs.slice(0, 3).map(song => (
                                 <QuickPlayCard
                                     key={song.id}

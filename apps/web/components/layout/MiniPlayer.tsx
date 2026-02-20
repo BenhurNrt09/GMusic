@@ -10,14 +10,17 @@ import { usePlayerStore } from '@/store/playerStore';
 // ============================================================
 
 export default function MiniPlayer() {
-    const { currentSong, isPlaying, togglePlay, progress, duration } = usePlayerStore();
+    const { currentSong, isPlaying, togglePlay, progress, duration, setMobilePlayerOpen } = usePlayerStore();
 
     if (!currentSong) return null;
 
     const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
 
     return (
-        <div className="flex md:hidden flex-col bg-[#282828] mx-2 rounded-lg overflow-hidden">
+        <div
+            onClick={() => setMobilePlayerOpen(true)}
+            className="flex md:hidden flex-col bg-[#282828] mx-2 rounded-lg overflow-hidden cursor-pointer hover:bg-[#333333] transition-colors shadow-lg active:scale-[0.98] duration-200"
+        >
             {/* Song info + controls */}
             <div className="flex items-center gap-3 px-3 py-2">
                 {/* Cover */}
@@ -44,7 +47,10 @@ export default function MiniPlayer() {
 
                 {/* Play/Pause */}
                 <button
-                    onClick={togglePlay}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        togglePlay();
+                    }}
                     className="w-8 h-8 flex items-center justify-center"
                 >
                     {isPlaying ? (

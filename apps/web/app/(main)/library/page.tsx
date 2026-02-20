@@ -35,7 +35,7 @@ export default function LibraryPage() {
             setLoading(true);
             try {
                 const [songsRes, artistsRes, albumsRes, playlistsRes] = await Promise.all([
-                    supabase.from('songs').select('*, artist:artists(*)').order('created_at', { ascending: false }).limit(30),
+                    supabase.from('songs').select('*, artist:artists(*)').order('plays', { ascending: false }).limit(30),
                     supabase.from('artists').select('*').order('name').limit(30),
                     supabase.from('albums').select('*, artist:artists(*)').order('created_at', { ascending: false }).limit(30),
                     supabase.from('playlists').select('*').eq('is_public', true).limit(20),
@@ -53,6 +53,34 @@ export default function LibraryPage() {
         }
 
         fetchLibrary();
+
+        // Real-time listener for play count updates
+        const channel = supabase
+            .channel('library_songs_updates')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'songs',
+                },
+                (payload: any) => {
+                    setSongs((currentSongs) => {
+                        const songExists = currentSongs.some(s => s.id === payload.new.id);
+                        if (!songExists) return currentSongs;
+
+                        const updatedSongs = currentSongs.map((s) =>
+                            s.id === payload.new.id ? { ...s, plays: payload.new.plays } : s
+                        );
+                        return [...updatedSongs].sort((a, b) => (b.plays || 0) - (a.plays || 0));
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     return (

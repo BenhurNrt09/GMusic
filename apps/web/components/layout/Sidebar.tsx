@@ -17,6 +17,8 @@ import {
     IoAdd,
 } from 'react-icons/io5';
 
+import CreatePlaylistModal from '../ui/CreatePlaylistModal';
+
 // ============================================================
 // Sidebar — Collapsible Spotify-style navigation
 // ============================================================
@@ -35,19 +37,69 @@ const navItems = [
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     const pathname = usePathname();
     const [playlists, setPlaylists] = useState<Playlist[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+    // Hardcoded user ID for the main user (Gülçin Engin)
+    const USER_ID = '00000000-0000-4000-a000-000000000001';
+
+    const fetchPlaylists = async () => {
+        const { data } = await supabase
+            .from('playlists')
+            .select('*')
+            .eq('user_id', USER_ID)
+            .order('created_at', { ascending: false });
+        if (data) setPlaylists(data as Playlist[]);
+    };
 
     useEffect(() => {
-        async function fetchPlaylists() {
-            const { data } = await supabase
-                .from('playlists')
-                .select('*')
-                .eq('is_public', true)
-                .order('created_at', { ascending: false })
-                .limit(10);
-            if (data) setPlaylists(data as Playlist[]);
-        }
         fetchPlaylists();
+
+        // Subscribe to real-time playlist changes
+        const channel = supabase
+            .channel('playlists_sync')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'playlists',
+                    filter: `user_id=eq.${USER_ID}`
+                },
+                () => {
+                    fetchPlaylists();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
+
+    const handleCreatePlaylist = async (title: string) => {
+        setLoading(true);
+        try {
+            const { error } = await (supabase
+                .from('playlists') as any)
+                .insert({
+                    title,
+                    user_id: USER_ID,
+                    is_public: true
+                });
+
+            if (error) {
+                console.error('Error creating playlist:', error);
+                alert('Çalma listesi oluşturulamadı.');
+            } else {
+                setIsCreateModalOpen(false);
+            }
+        } catch (err) {
+            console.error('Unexpected error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <aside
@@ -121,7 +173,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                             Çalma Listeleri
                         </span>
-                        <button className="text-gray-400 hover:text-white transition-colors">
+                        <button
+                            onClick={() => setIsCreateModalOpen(true)}
+                            disabled={loading}
+                            className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+                            title="Çalma Listesi Oluştur"
+                        >
                             <IoAdd className="text-lg" />
                         </button>
                     </div>
@@ -168,6 +225,14 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     )}
                 </button>
             </div>
+
+            <CreatePlaylistModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                onCreate={handleCreatePlaylist}
+                initialTitle={`Çalma Listem #${playlists.length + 1}`}
+                loading={loading}
+            />
         </aside>
     );
 }

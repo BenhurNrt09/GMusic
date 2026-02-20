@@ -42,11 +42,11 @@ export default function PlaylistsPage() {
             }
             const payload = { title, description, is_public: isPublic, cover_url };
             if (editing) {
-                const { error } = await supabase.from('playlists').update(payload as any).eq('id', editing.id);
+                const { error } = await (supabase.from('playlists') as any).update(payload).eq('id', editing.id);
                 if (error) { showToast(`Güncelleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${title}" başarıyla güncellendi!`, 'success');
             } else {
-                const { error } = await supabase.from('playlists').insert({ ...payload, user_id: '00000000-0000-0000-0000-000000000000' } as any);
+                const { error } = await (supabase.from('playlists') as any).insert({ ...payload, user_id: '00000000-0000-0000-0000-000000000000' });
                 if (error) { showToast(`Ekleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${title}" başarıyla eklendi!`, 'success');
             }

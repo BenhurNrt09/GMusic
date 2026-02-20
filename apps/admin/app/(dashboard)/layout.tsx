@@ -13,6 +13,7 @@ import {
     IoList,
     IoCloudUpload,
     IoLogOut,
+    IoLink,
 } from 'react-icons/io5';
 import { ToastProvider } from '@/components/Toast';
 
@@ -27,6 +28,7 @@ const navItems = [
     { href: '/artists', icon: IoPeople, label: 'Sanatçılar' },
     { href: '/albums', icon: IoDisc, label: 'Albümler' },
     { href: '/songs', icon: IoMusicalNote, label: 'Şarkılar' },
+    { href: '/lyrics-sync', icon: IoMusicalNotes, label: 'Söz Senkronizasyonu' },
     { href: '/playlists', icon: IoList, label: 'Çalma Listeleri' },
     { href: '/uploads', icon: IoCloudUpload, label: 'Yüklemeler' },
 ];

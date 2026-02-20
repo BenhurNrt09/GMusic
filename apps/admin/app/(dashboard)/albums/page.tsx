@@ -68,11 +68,11 @@ export default function AlbumsPage() {
 
             const payload = { title, artist_id: artistId, release_date: releaseDate || null, cover_url };
             if (editingAlbum) {
-                const { error } = await supabase.from('albums').update(payload as any).eq('id', editingAlbum.id);
+                const { error } = await (supabase.from('albums') as any).update(payload).eq('id', editingAlbum.id);
                 if (error) { showToast(`Güncelleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${title}" başarıyla güncellendi!`, 'success');
             } else {
-                const { error } = await supabase.from('albums').insert(payload as any);
+                const { error } = await (supabase.from('albums') as any).insert(payload);
                 if (error) { showToast(`Ekleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${title}" başarıyla eklendi!`, 'success');
             }

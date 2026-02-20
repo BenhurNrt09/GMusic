@@ -8,7 +8,10 @@ import RightPanel from '@/components/layout/RightPanel';
 import TopBar from '@/components/layout/TopBar';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
 import MiniPlayer from '@/components/layout/MiniPlayer';
+import MobilePlayer from '@/components/layout/MobilePlayer';
+import VideoMiniPlayer from '@/components/layout/VideoMiniPlayer';
 import SupabaseHeartbeat from '@/components/utils/SupabaseHeartbeat';
+import MediaErrorSuppressor from '@/components/utils/MediaErrorSuppressor';
 
 // ============================================================
 // MainLayout — Responsive shell with auth guard:
@@ -43,6 +46,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     return (
         <div className="flex flex-col h-screen overflow-hidden bg-dark">
             <SupabaseHeartbeat />
+            <MediaErrorSuppressor />
             {/* Main content area */}
             <div className="flex flex-1 overflow-hidden">
                 {/* Sidebar — hidden on mobile */}
@@ -55,11 +59,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
                 {/* Center content */}
                 <main className="flex-1 overflow-y-auto scrollbar-thin bg-gradient-to-b from-[#1a1a1a] to-[#0f0f0f] md:rounded-tl-xl md:rounded-bl-xl">
-                    {/* TopBar — hidden on mobile */}
-                    <div className="hidden md:block">
-                        <TopBar />
-                    </div>
-                    <div className="px-4 md:px-6 pb-8 pt-4 md:pt-0">{children}</div>
+                    {/* TopBar — Now always visible for back navigation */}
+                    <TopBar />
+                    <div className="px-4 md:px-6 pb-8 md:pt-0">{children}</div>
                 </main>
 
                 {/* Right panel (conditional) — desktop only */}
@@ -78,6 +80,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 <MiniPlayer />
                 <MobileBottomNav />
             </div>
+
+            <MobilePlayer />
+            <VideoMiniPlayer />
         </div>
     );
 }

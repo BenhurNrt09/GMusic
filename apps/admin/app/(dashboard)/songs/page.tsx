@@ -23,9 +23,12 @@ export default function SongsPage() {
     const [title, setTitle] = useState('');
     const [artistId, setArtistId] = useState('');
     const [albumId, setAlbumId] = useState('');
-    const [duration, setDuration] = useState(0);
+    const [durationMin, setDurationMin] = useState('');
+    const [durationSec, setDurationSec] = useState('');
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [coverFile, setCoverFile] = useState<File | null>(null);
+    const [videoFile, setVideoFile] = useState<File | null>(null);
+    const [lyrics, setLyrics] = useState('');
     const [saving, setSaving] = useState(false);
 
     const fetchData = async () => {
@@ -44,8 +47,8 @@ export default function SongsPage() {
     useEffect(() => { fetchData(); }, []);
 
     const resetForm = () => {
-        setTitle(''); setArtistId(''); setAlbumId(''); setDuration(0);
-        setAudioFile(null); setCoverFile(null); setEditingSong(null); setShowForm(false);
+        setTitle(''); setArtistId(''); setAlbumId(''); setDurationMin(''); setDurationSec('');
+        setAudioFile(null); setCoverFile(null); setVideoFile(null); setLyrics(''); setEditingSong(null); setShowForm(false);
     };
 
     const openEdit = (song: Song) => {
@@ -53,7 +56,12 @@ export default function SongsPage() {
         setTitle(song.title);
         setArtistId(song.artist_id);
         setAlbumId(song.album_id || '');
-        setDuration(song.duration || 0);
+
+        const totalSec = song.duration || 0;
+        setDurationMin(Math.floor(totalSec / 60).toString());
+        setDurationSec((totalSec % 60).toString());
+        setLyrics(song.lyrics || '');
+
         setShowForm(true);
     };
 
@@ -63,16 +71,20 @@ export default function SongsPage() {
         try {
             let audio_url = editingSong?.audio_url || '';
             let cover_url = editingSong?.cover_url || null;
+            let video_url = editingSong?.video_url || null;
 
             // Upload audio file
             if (audioFile) {
                 const ext = audioFile.name.split('.').pop();
                 const path = `songs/${Date.now()}.${ext}`;
                 const { error: uploadError } = await supabase.storage.from('music').upload(path, audioFile);
-                if (!uploadError) {
-                    const { data: urlData } = supabase.storage.from('music').getPublicUrl(path);
-                    audio_url = urlData.publicUrl;
+                if (uploadError) {
+                    showToast(`Ses yükleme hatası: ${uploadError.message}`, 'error');
+                    setSaving(false);
+                    return;
                 }
+                const { data: urlData } = supabase.storage.from('music').getPublicUrl(path);
+                audio_url = urlData.publicUrl;
             }
 
             // Upload cover image
@@ -80,10 +92,28 @@ export default function SongsPage() {
                 const ext = coverFile.name.split('.').pop();
                 const path = `songs/${Date.now()}_cover.${ext}`;
                 const { error: uploadError } = await supabase.storage.from('covers').upload(path, coverFile);
-                if (!uploadError) {
+                if (uploadError) {
+                    showToast(`Kapak yükleme hatası: ${uploadError.message}`, 'error');
+                } else {
                     const { data: urlData } = supabase.storage.from('covers').getPublicUrl(path);
                     cover_url = urlData.publicUrl;
                 }
+            }
+
+            // Upload video file
+            if (videoFile) {
+                const ext = videoFile.name.split('.').pop();
+                const path = `songs/${Date.now()}_video.${ext}`;
+                const { error: uploadError } = await supabase.storage.from('videos').upload(path, videoFile, {
+                    contentType: videoFile.type || 'video/mp4'
+                });
+                if (uploadError) {
+                    showToast(`Video yükleme hatası: ${uploadError.message}. 'videos' adında bir bucket olduğundan emin olun.`, 'error');
+                    setSaving(false);
+                    return;
+                }
+                const { data: urlData } = supabase.storage.from('videos').getPublicUrl(path);
+                video_url = urlData.publicUrl;
             }
 
             if (!audio_url) {
@@ -92,21 +122,25 @@ export default function SongsPage() {
                 return;
             }
 
-            const payload = {
+            const finalDuration = (parseInt(durationMin) || 0) * 60 + (parseInt(durationSec) || 0);
+
+            const payload: any = {
                 title,
                 artist_id: artistId,
                 album_id: albumId || null,
                 audio_url,
                 cover_url,
-                duration: Math.round(parseFloat(String(duration)) || 0),
+                video_url,
+                duration: finalDuration,
+                lyrics: lyrics || null,
             };
 
             if (editingSong) {
-                const { error } = await supabase.from('songs').update(payload as any).eq('id', editingSong.id);
+                const { error } = await (supabase.from('songs') as any).update(payload).eq('id', editingSong.id);
                 if (error) { showToast(`Güncelleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${title}" başarıyla güncellendi!`, 'success');
             } else {
-                const { error } = await supabase.from('songs').insert(payload as any);
+                const { error } = await (supabase.from('songs') as any).insert(payload);
                 if (error) { showToast(`Ekleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${title}" başarıyla eklendi!`, 'success');
             }
@@ -130,6 +164,17 @@ export default function SongsPage() {
 
     const formatDuration = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
     const filtered = songs.filter(s => s.title.toLowerCase().includes(search.toLowerCase()));
+
+    const filteredAlbums = React.useMemo(() => {
+        return artistId
+            ? albums.filter(a => String(a.artist_id) === String(artistId))
+            : [];
+    }, [artistId, albums]);
+
+    // Reset album selection when artist changes
+    useEffect(() => {
+        setAlbumId('');
+    }, [artistId]);
 
     return (
         <div className="space-y-6">
@@ -164,22 +209,31 @@ export default function SongsPage() {
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Sanatçı *</label>
                                 <select value={artistId} onChange={(e) => setArtistId(e.target.value)} required
                                     className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa]">
-                                    <option value="">Sanatçı seçin...</option>
-                                    {artists.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                    <option value="" className="bg-[#1e1e1e]">Sanatçı seçin...</option>
+                                    {artists.map(a => <option key={a.id} value={a.id} className="bg-[#1e1e1e]">{a.name}</option>)}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Albüm (isteğe bağlı)</label>
-                                <select value={albumId} onChange={(e) => setAlbumId(e.target.value)}
-                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa]">
-                                    <option value="">Albüm yok</option>
-                                    {albums.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Süre (saniye)</label>
-                                <input type="number" value={duration} onChange={(e) => setDuration(Number(e.target.value))}
-                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa]" />
+                            {artistId && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Albüm (isteğe bağlı)</label>
+                                    <select value={albumId} onChange={(e) => setAlbumId(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa]">
+                                        <option value="" className="bg-[#1e1e1e]">Albüm yok</option>
+                                        {filteredAlbums.map(a => <option key={a.id} value={a.id} className="bg-[#1e1e1e]">{a.title}</option>)}
+                                    </select>
+                                </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Dakika</label>
+                                    <input type="number" placeholder="0" value={durationMin} onChange={(e) => setDurationMin(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa]" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Saniye</label>
+                                    <input type="number" placeholder="0" value={durationSec} onChange={(e) => setDurationSec(e.target.value)}
+                                        className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa]" />
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Ses Dosyası {!editingSong && '*'}</label>
@@ -196,6 +250,42 @@ export default function SongsPage() {
                                     <span className="text-sm text-gray-400">{coverFile ? coverFile.name : 'Kapak görseli seçin...'}</span>
                                     <input type="file" accept="image/*" onChange={(e) => setCoverFile(e.target.files?.[0] || null)} className="hidden" />
                                 </label>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Video Dosyası (İsteğe bağlı - Sadece MP4)</label>
+                                <label className="flex items-center gap-2 px-4 py-3 bg-white/5 border border-dashed border-white/20 rounded-xl cursor-pointer hover:border-[#c68cfa] transition-colors mb-2">
+                                    <IoCloudUpload className="text-gray-400" />
+                                    <span className="text-sm text-gray-400">{videoFile ? videoFile.name : 'Video (.mp4) dosyası seçin...'}</span>
+                                    <input type="file" accept="video/mp4" onChange={(e) => setVideoFile(e.target.files?.[0] || null)} className="hidden" />
+                                </label>
+                                {editingSong?.video_url && !videoFile && (
+                                    <div className="flex items-center justify-between px-3 py-2 bg-white/5 rounded-lg mb-2">
+                                        <span className="text-[10px] text-gray-400 truncate max-w-[200px] italic">Mevcut video yüklü</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (confirm('Mevcut videoyu silmek istediğinize emin misiniz?')) {
+                                                    // Immediately set video_url to null for submission
+                                                    setEditingSong(prev => prev ? { ...prev, video_url: null } : null);
+                                                    showToast('Video silindi, kaydetmeyi unutmayın.', 'success');
+                                                }
+                                            }}
+                                            className="text-[10px] text-red-400 hover:underline"
+                                        >
+                                            Videoyu Kaldır
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Şarkı Sözleri (İsteğe Bağlı - LRC formatı önerilir)</label>
+                                <textarea
+                                    value={lyrics}
+                                    onChange={(e) => setLyrics(e.target.value)}
+                                    placeholder="[00:12.34] Şarkı sözü satırı..."
+                                    rows={6}
+                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa] font-mono"
+                                />
                             </div>
                             <div className="flex justify-end gap-3 pt-2">
                                 <button type="button" onClick={resetForm} className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-medium transition-colors">İptal</button>

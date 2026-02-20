@@ -111,6 +111,17 @@ CREATE TABLE IF NOT EXISTS pings (
 );
 
 -- ============================================================
+-- FOLLOWS (artist follows)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS follows (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  artist_id UUID REFERENCES artists(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, artist_id)
+);
+
+-- ============================================================
 -- INDEXES
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist_id);
@@ -119,6 +130,8 @@ CREATE INDEX IF NOT EXISTS idx_albums_artist ON albums(artist_id);
 CREATE INDEX IF NOT EXISTS idx_playlist_songs_playlist ON playlist_songs(playlist_id);
 CREATE INDEX IF NOT EXISTS idx_likes_user ON likes(user_id);
 CREATE INDEX IF NOT EXISTS idx_recently_played_user ON recently_played(user_id);
+CREATE INDEX IF NOT EXISTS idx_follows_user ON follows(user_id);
+CREATE INDEX IF NOT EXISTS idx_follows_artist ON follows(artist_id);
 
 -- ============================================================
 -- RLS POLICIES
@@ -132,17 +145,38 @@ ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recently_played ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
 
 -- Full access policies for content tables (admin panel uses anon key)
+DROP POLICY IF EXISTS "Allow full access to artists" ON artists;
 CREATE POLICY "Allow full access to artists" ON artists FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to albums" ON albums;
 CREATE POLICY "Allow full access to albums" ON albums FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to songs" ON songs;
 CREATE POLICY "Allow full access to songs" ON songs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to playlists" ON playlists;
 CREATE POLICY "Allow full access to playlists" ON playlists FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to playlist_songs" ON playlist_songs;
 CREATE POLICY "Allow full access to playlist_songs" ON playlist_songs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to likes" ON likes;
 CREATE POLICY "Allow full access to likes" ON likes FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to recently_played" ON recently_played;
 CREATE POLICY "Allow full access to recently_played" ON recently_played FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to users" ON users;
 CREATE POLICY "Allow full access to users" ON users FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to pings" ON pings;
 CREATE POLICY "Allow full access to pings" ON pings FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access to follows" ON follows;
+CREATE POLICY "Allow full access to follows" ON follows FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================
 -- STORAGE BUCKETS
@@ -152,7 +186,25 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('covers', 'covers', true)
 INSERT INTO storage.buckets (id, name, public) VALUES ('artists', 'artists', true) ON CONFLICT (id) DO NOTHING;
 
 -- Storage Policies
+DROP POLICY IF EXISTS "Allow all on music" ON storage.objects;
 CREATE POLICY "Allow all on music" ON storage.objects FOR ALL USING (bucket_id = 'music') WITH CHECK (bucket_id = 'music');
+
+DROP POLICY IF EXISTS "Allow all on covers" ON storage.objects;
 CREATE POLICY "Allow all on covers" ON storage.objects FOR ALL USING (bucket_id = 'covers') WITH CHECK (bucket_id = 'covers');
+
+DROP POLICY IF EXISTS "Allow all on artists" ON storage.objects;
 CREATE POLICY "Allow all on artists" ON storage.objects FOR ALL USING (bucket_id = 'artists') WITH CHECK (bucket_id = 'artists');
+
+-- ============================================================
+-- ENABLE REALTIME
+-- ============================================================
+BEGIN;
+  -- Remove existing if any to avoid errors
+  DROP PUBLICATION IF EXISTS supabase_realtime;
+  CREATE PUBLICATION supabase_realtime FOR TABLE likes, playlists, pings;
+COMMIT;
+
+-- Ensure DELETE events include full record for filtering
+ALTER TABLE likes REPLICA IDENTITY FULL;
+ALTER TABLE playlists REPLICA IDENTITY FULL;
 

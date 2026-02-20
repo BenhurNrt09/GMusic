@@ -23,7 +23,7 @@ function getSupabase(): SupabaseClient<Database> {
 }
 
 // Proxy object so existing `supabase.from(...)` calls work seamlessly
-export const supabase = new Proxy({} as SupabaseClient<Database>, {
+export const supabase = new Proxy({} as SupabaseClient<any>, {
     get(_target, prop) {
         return (getSupabase() as any)[prop];
     },

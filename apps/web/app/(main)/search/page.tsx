@@ -8,6 +8,9 @@ import SongCard from '@/components/cards/SongCard';
 import ArtistCard from '@/components/cards/ArtistCard';
 import AlbumCard from '@/components/cards/AlbumCard';
 import SongRow from '@/components/ui/SongRow';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { usePlayerStore } from '@/store/playerStore';
 
 // ============================================================
 // Search Page — Real-time search with results grid
@@ -30,6 +33,8 @@ const browseCategories = [
 ];
 
 export default function SearchPage() {
+    const router = useRouter();
+    const { playSong } = usePlayerStore();
     const [query, setQuery] = useState('');
     const [songs, setSongs] = useState<Song[]>([]);
     const [artists, setArtists] = useState<Artist[]>([]);
@@ -66,8 +71,11 @@ export default function SearchPage() {
             ]);
 
             if (songsRes.data) setSongs(songsRes.data as unknown as Song[]);
+            else setSongs([]);
             if (artistsRes.data) setArtists(artistsRes.data as Artist[]);
+            else setArtists([]);
             if (albumsRes.data) setAlbums(albumsRes.data as unknown as Album[]);
+            else setAlbums([]);
         } catch (error) {
             console.error('Search error:', error);
         } finally {
@@ -121,12 +129,68 @@ export default function SearchPage() {
                         </div>
                     )}
 
-                    {/* Artists results */}
-                    {artists.length > 0 && (
+                    {/* Top Result + Songs */}
+                    <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-8">
+                        {/* Top Result */}
                         <section>
-                            <h2 className="text-xl font-bold text-white mb-4">Sanatçılar</h2>
+                            <h2 className="text-xl font-bold text-white mb-4">En İyi Sonuç</h2>
+                            <div className="bg-[#181818] hover:bg-[#282828] p-6 rounded-2xl transition-colors cursor-pointer group" onClick={() => {
+                                if (artists[0]) router.push(`/artist/${artists[0].id}`);
+                                else if (songs[0]) playSong(songs[0], songs);
+                            }}>
+                                <div className="relative w-24 h-24 mb-6 shadow-2xl rounded-xl overflow-hidden">
+                                    {(artists[0]?.image_url || songs[0]?.cover_url || albums[0]?.cover_url) ? (
+                                        <img
+                                            src={artists[0]?.image_url || songs[0]?.cover_url || albums[0]?.cover_url || ''}
+                                            alt=""
+                                            className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 ${artists[0] ? 'rounded-full' : 'rounded-xl'}`}
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                                            <IoSearch size={32} className="text-white/20" />
+                                        </div>
+                                    )}
+                                </div>
+                                <h3 className="text-3xl font-black text-white mb-2 line-clamp-1">{artists[0]?.name || songs[0]?.title || 'Sonuç'}</h3>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">
+                                        {artists[0] ? 'Sanatçı' : songs[0] ? 'Şarkı' : 'Albüm'}
+                                    </span>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* Songs results */}
+                        {songs.length > 0 && (
+                            <section>
+                                <h2 className="text-xl font-bold text-white mb-4">Şarkılar</h2>
+                                <div className="space-y-1">
+                                    {songs.slice(0, 4).map((song, i) => (
+                                        <SongRow key={song.id} song={song} index={i} songs={songs} showCover />
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                    </div>
+
+                    {/* All Songs if many */}
+                    {songs.length > 4 && (
+                        <section className="mt-8">
+                            <h2 className="text-xl font-bold text-white mb-4">Tüm Şarkılar</h2>
+                            <div className="space-y-1">
+                                {songs.slice(4).map((song, i) => (
+                                    <SongRow key={song.id} song={song} index={i + 4} songs={songs} showCover showAlbum />
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Artists results */}
+                    {artists.length > 1 && (
+                        <section className="mt-8">
+                            <h2 className="text-xl font-bold text-white mb-4">Benzer Sanatçılar</h2>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-                                {artists.map((artist) => (
+                                {artists.slice(1).map((artist) => (
                                     <ArtistCard
                                         key={artist.id}
                                         id={artist.id}
@@ -138,21 +202,9 @@ export default function SearchPage() {
                         </section>
                     )}
 
-                    {/* Songs results */}
-                    {songs.length > 0 && (
-                        <section>
-                            <h2 className="text-xl font-bold text-white mb-4">Şarkılar</h2>
-                            <div className="space-y-1">
-                                {songs.map((song, i) => (
-                                    <SongRow key={song.id} song={song} index={i} songs={songs} showCover showAlbum />
-                                ))}
-                            </div>
-                        </section>
-                    )}
-
                     {/* Albums results */}
                     {albums.length > 0 && (
-                        <section>
+                        <section className="mt-8">
                             <h2 className="text-xl font-bold text-white mb-4">Albümler</h2>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
                                 {albums.map((album) => (
@@ -173,14 +225,17 @@ export default function SearchPage() {
                 <section>
                     <h2 className="text-xl font-bold text-white mb-4">Tümüne Göz At</h2>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {browseCategories.map((cat) => (
-                            <button
+                        {browseCategories.map((cat, i) => (
+                            <motion.button
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: i * 0.05 }}
                                 key={cat.title}
                                 onClick={() => setQuery(cat.title)}
-                                className={`relative h-32 rounded-xl overflow-hidden bg-gradient-to-br ${cat.gradient} p-4 text-left hover:scale-[1.02] transition-transform duration-200`}
+                                className={`relative h-32 rounded-xl overflow-hidden bg-gradient-to-br ${cat.gradient} p-4 text-left hover:scale-[1.02] active:scale-[0.98] transition-all duration-200`}
                             >
                                 <span className="text-lg font-bold text-white">{cat.title}</span>
-                            </button>
+                            </motion.button>
                         ))}
                     </div>
                 </section>

@@ -22,27 +22,35 @@ DROP POLICY IF EXISTS "Users read own data" ON users;
 -- ============================================================
 
 -- ARTISTS
+DROP POLICY IF EXISTS "Allow full access to artists" ON artists;
 CREATE POLICY "Allow full access to artists" ON artists FOR ALL USING (true) WITH CHECK (true);
 
 -- ALBUMS
+DROP POLICY IF EXISTS "Allow full access to albums" ON albums;
 CREATE POLICY "Allow full access to albums" ON albums FOR ALL USING (true) WITH CHECK (true);
 
 -- SONGS
+DROP POLICY IF EXISTS "Allow full access to songs" ON songs;
 CREATE POLICY "Allow full access to songs" ON songs FOR ALL USING (true) WITH CHECK (true);
 
 -- PLAYLISTS
+DROP POLICY IF EXISTS "Allow full access to playlists" ON playlists;
 CREATE POLICY "Allow full access to playlists" ON playlists FOR ALL USING (true) WITH CHECK (true);
 
 -- PLAYLIST_SONGS
+DROP POLICY IF EXISTS "Allow full access to playlist_songs" ON playlist_songs;
 CREATE POLICY "Allow full access to playlist_songs" ON playlist_songs FOR ALL USING (true) WITH CHECK (true);
 
 -- LIKES
+DROP POLICY IF EXISTS "Allow full access to likes" ON likes;
 CREATE POLICY "Allow full access to likes" ON likes FOR ALL USING (true) WITH CHECK (true);
 
 -- RECENTLY_PLAYED
+DROP POLICY IF EXISTS "Allow full access to recently_played" ON recently_played;
 CREATE POLICY "Allow full access to recently_played" ON recently_played FOR ALL USING (true) WITH CHECK (true);
 
 -- USERS
+DROP POLICY IF EXISTS "Allow full access to users" ON users;
 CREATE POLICY "Allow full access to users" ON users FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================
@@ -52,6 +60,7 @@ CREATE POLICY "Allow full access to users" ON users FOR ALL USING (true) WITH CH
 INSERT INTO storage.buckets (id, name, public) VALUES ('music', 'music', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('covers', 'covers', true) ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public) VALUES ('artists', 'artists', true) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('videos', 'videos', true) ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
 -- 4. Storage Policies — allow uploads and reads
@@ -75,3 +84,7 @@ CREATE POLICY "Allow all on covers" ON storage.objects FOR ALL USING (bucket_id 
 
 -- Artists bucket
 CREATE POLICY "Allow all on artists" ON storage.objects FOR ALL USING (bucket_id = 'artists') WITH CHECK (bucket_id = 'artists');
+
+-- Videos bucket
+DROP POLICY IF EXISTS "Allow all on videos" ON storage.objects;
+CREATE POLICY "Allow all on videos" ON storage.objects FOR ALL USING (bucket_id = 'videos') WITH CHECK (bucket_id = 'videos');

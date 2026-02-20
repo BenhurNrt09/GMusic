@@ -16,6 +16,8 @@ import {
     IoMusicalNote,
     IoHeart,
     IoHeartOutline,
+    IoVideocam,
+    IoHeadset
 } from 'react-icons/io5';
 import Link from 'next/link';
 import { usePlayerStore } from '@/store/playerStore';
@@ -49,6 +51,8 @@ export default function BottomPlayer() {
         prevSong,
         toggleRightPanel,
         restoreFromStorage,
+        isVideoMode,
+        setVideoMode
     } = usePlayerStore();
 
     const [isLiked, setIsLiked] = React.useState(false);
@@ -65,7 +69,7 @@ export default function BottomPlayer() {
     useEffect(() => {
         async function checkLiked() {
             if (!currentSong) return;
-            const { data } = await supabase.from('likes').select('id').eq('song_id', currentSong.id).eq('user_id', USER_ID).single();
+            const { data } = await supabase.from('likes').select('id').eq('song_id', currentSong.id).eq('user_id', USER_ID).maybeSingle();
             setIsLiked(!!data);
         }
         checkLiked();
@@ -97,19 +101,21 @@ export default function BottomPlayer() {
         const audio = audioRef.current;
         if (!audio) return;
 
-        if (isPlaying) {
+        // ONLY play audio element if NOT in Video Mode
+        if (isPlaying && !isVideoMode) {
             audio.play().catch(() => { });
         } else {
             audio.pause();
         }
-    }, [isPlaying]);
+    }, [isPlaying, isVideoMode]);
 
     // Volume sync
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
-        audio.volume = isMuted ? 0 : volume;
-    }, [volume, isMuted]);
+        // Mute if in video mode OR if explicitly muted
+        audio.volume = (isVideoMode || isMuted) ? 0 : volume;
+    }, [volume, isMuted, isVideoMode]);
 
     // Audio source change and progress restoration
     useEffect(() => {
@@ -119,36 +125,51 @@ export default function BottomPlayer() {
         // Save current isPlaying state to resume if it was already playing
         const wasPlaying = isPlaying;
 
-        audio.src = currentSong.audio_url;
-        audio.load();
+        // ONLY update source and reload if it's different from current
+        if (audio.src !== currentSong.audio_url) {
+            audio.src = currentSong.audio_url;
+            audio.load();
 
-        if (isInitialPositionSet.current) {
-            // If this is NOT the initial load (e.g. user changed song), just play
-            if (wasPlaying) audio.play().catch(() => { });
-        } else {
-            // First ever load - attempt restoration
-            const savedProgress = progress;
-            if (savedProgress > 0) {
-                const onReady = () => {
-                    audio.currentTime = savedProgress;
-                    isInitialPositionSet.current = true;
-                    if (wasPlaying) audio.play().catch(() => { });
-                    audio.removeEventListener('loadedmetadata', onReady);
-                };
-                audio.addEventListener('loadedmetadata', onReady);
+            if (isInitialPositionSet.current) {
+                // If this is NOT the initial load (e.g. user changed song), just play IF NOT in video mode
+                if (wasPlaying && !isVideoMode) {
+                    audio.play().catch(() => { });
+                } else {
+                    audio.pause();
+                }
             } else {
-                isInitialPositionSet.current = true;
-                if (wasPlaying) audio.play().catch(() => { });
+                // First ever load - attempt restoration
+                const savedProgress = progress;
+                if (savedProgress > 0) {
+                    const onReady = () => {
+                        audio.currentTime = savedProgress;
+                        isInitialPositionSet.current = true;
+                        if (wasPlaying && !isVideoMode) {
+                            audio.play().catch(() => { });
+                        } else {
+                            audio.pause();
+                        }
+                        audio.removeEventListener('loadedmetadata', onReady);
+                    };
+                    audio.addEventListener('loadedmetadata', onReady);
+                } else {
+                    isInitialPositionSet.current = true;
+                    if (wasPlaying && !isVideoMode) {
+                        audio.play().catch(() => { });
+                    } else {
+                        audio.pause();
+                    }
+                }
             }
         }
-    }, [currentSong?.id]);
+    }, [currentSong?.id]); // Only change if song ID changes
 
     const handleTimeUpdate = useCallback(() => {
         const audio = audioRef.current;
         if (audio && isInitialPositionSet.current) {
             // Only update store progress if we are NOT in the middle of initial restoration
-            // and avoid updating if audio just started (to prevent 0 values during metadata load)
-            if (audio.currentTime > 0 || isPlaying) {
+            // AND we are NOT in video mode (video player will handle progress updates)
+            if (!isVideoMode && (audio.currentTime > 0 || isPlaying)) {
                 setProgress(audio.currentTime);
             }
         }
@@ -344,6 +365,15 @@ export default function BottomPlayer() {
 
             {/* RIGHT — Volume + Queue */}
             <div className="flex items-center gap-3 w-[30%] min-w-[180px] justify-end">
+                {currentSong?.video_url && (
+                    <button
+                        onClick={() => setVideoMode(!isVideoMode)}
+                        className={`transition-colors ${isVideoMode ? 'text-[#c68cfa]' : 'text-gray-400 hover:text-white'}`}
+                        title={isVideoMode ? "Videoyu Kapat" : "Videoyu Aç"}
+                    >
+                        {isVideoMode ? <IoHeadset className="text-lg" /> : <IoVideocam className="text-lg" />}
+                    </button>
+                )}
                 <button
                     onClick={toggleRightPanel}
                     className="text-gray-400 hover:text-white transition-colors"

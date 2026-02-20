@@ -21,7 +21,7 @@ export default function ArtistsPage() {
     // Form state
     const [name, setName] = useState('');
     const [bio, setBio] = useState('');
-    const [monthlyListeners, setMonthlyListeners] = useState(0);
+    const [monthlyListeners, setMonthlyListeners] = useState('');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [saving, setSaving] = useState(false);
 
@@ -35,7 +35,7 @@ export default function ArtistsPage() {
     useEffect(() => { fetchArtists(); }, []);
 
     const resetForm = () => {
-        setName(''); setBio(''); setMonthlyListeners(0); setImageFile(null);
+        setName(''); setBio(''); setMonthlyListeners(''); setImageFile(null);
         setEditingArtist(null); setShowForm(false);
     };
 
@@ -43,7 +43,7 @@ export default function ArtistsPage() {
         setEditingArtist(artist);
         setName(artist.name);
         setBio(artist.bio || '');
-        setMonthlyListeners(artist.monthly_listeners || 0);
+        setMonthlyListeners(String(artist.monthly_listeners || ''));
         setShowForm(true);
     };
 
@@ -67,14 +67,14 @@ export default function ArtistsPage() {
                 }
             }
 
-            const payload = { name, bio, monthly_listeners: monthlyListeners, image_url };
+            const payload = { name, bio, monthly_listeners: parseInt(monthlyListeners) || 0, image_url };
 
             if (editingArtist) {
-                const { error } = await supabase.from('artists').update(payload as any).eq('id', editingArtist.id);
+                const { error } = await (supabase.from('artists') as any).update(payload).eq('id', editingArtist.id);
                 if (error) { showToast(`Güncelleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${name}" başarıyla güncellendi!`, 'success');
             } else {
-                const { error } = await supabase.from('artists').insert(payload as any);
+                const { error } = await (supabase.from('artists') as any).insert(payload);
                 if (error) { showToast(`Ekleme hatası: ${error.message}`, 'error'); return; }
                 showToast(`"${name}" başarıyla eklendi!`, 'success');
             }
@@ -146,7 +146,7 @@ export default function ArtistsPage() {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Aylık Dinleyici</label>
-                                <input type="number" value={monthlyListeners} onChange={(e) => setMonthlyListeners(Number(e.target.value))}
+                                <input type="number" placeholder="0" value={monthlyListeners} onChange={(e) => setMonthlyListeners(e.target.value)}
                                     className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-[#c68cfa]" />
                             </div>
                             <div>

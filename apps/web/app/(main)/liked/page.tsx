@@ -43,6 +43,41 @@ export default function LikedSongsPage() {
         }
 
         fetchLikedSongs();
+
+        // Subscribe to real-time changes
+        const channel = supabase
+            .channel('liked_songs_sync')
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'likes',
+                    filter: `user_id=eq.${USER_ID}`
+                },
+                (payload) => {
+                    if (payload.eventType === 'INSERT') {
+                        // Small delay to ensure DB records are fully committed and reachable with joins
+                        setTimeout(() => fetchLikedSongs(), 500);
+                    } else if (payload.eventType === 'DELETE') {
+                        // For delete, we can immediately remove from state if we have the song_id
+                        const deletedId = payload.old.song_id;
+                        if (deletedId) {
+                            setSongs(prev => prev.filter(s => s.id !== deletedId));
+                        } else {
+                            // Fallback to fetch if old data is missing (Replica Identity issues)
+                            fetchLikedSongs();
+                        }
+                    } else {
+                        fetchLikedSongs();
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [USER_ID]);
 
     return (

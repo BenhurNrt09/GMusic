@@ -41,6 +41,8 @@ export interface Song {
     cover_url: string | null;
     duration: number; // seconds
     plays: number;
+    lyrics?: string | null;
+    video_url?: string | null;
     created_at: string;
     // Joined fields
     artist?: Artist;

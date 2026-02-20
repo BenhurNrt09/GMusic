@@ -1,3 +1,5 @@
+'use client';
+
 import { create } from 'zustand';
 import { supabase } from '@gmusic/database';
 import type { Song } from '@gmusic/database';
@@ -14,6 +16,7 @@ interface SavedPlayerState {
     queueIndex: number;
     progress: number;
     volume: number;
+    isVideoMode: boolean;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +85,14 @@ async function trackRecentlyPlayed(song: Song) {
 }
 
 
+async function incrementPlayCount(songId: string) {
+    try {
+        await (supabase.rpc as any)('increment_song_plays', { song_id: songId });
+    } catch (error) {
+        console.error('Error incrementing play count:', error);
+    }
+}
+
 interface PlayerState {
     // Current track
     currentSong: Song | null;
@@ -97,10 +108,15 @@ interface PlayerState {
 
     // Modes
     shuffle: boolean;
+    shuffledOrder: number[]; // Index array for shuffle cycle
     repeat: 'off' | 'all' | 'one';
+    isVideoMode: boolean;
 
     // Right panel
     isRightPanelOpen: boolean;
+
+    // Mobile full-screen player
+    isMobilePlayerOpen: boolean;
 
     // Actions
     playSong: (song: Song, queue?: Song[]) => void;
@@ -108,6 +124,7 @@ interface PlayerState {
     setProgress: (progress: number) => void;
     setDuration: (duration: number) => void;
     setVolume: (volume: number) => void;
+    setVideoMode: (enabled: boolean) => void;
     toggleMute: () => void;
     toggleShuffle: () => void;
     toggleRepeat: () => void;
@@ -115,7 +132,11 @@ interface PlayerState {
     prevSong: () => void;
     toggleRightPanel: () => void;
     setRightPanelOpen: (open: boolean) => void;
+    setMobilePlayerOpen: (open: boolean) => void;
     addToQueue: (song: Song) => void;
+    removeFromQueue: (songId: string) => void;
+    clearQueue: () => void;
+    setQueue: (queue: Song[]) => void;
     restoreFromStorage: () => void;
 }
 
@@ -129,37 +150,75 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     volume: 0.7,
     isMuted: false,
     shuffle: false,
+    shuffledOrder: [],
     repeat: 'off',
     isRightPanelOpen: false,
+    isVideoMode: false,
+    isMobilePlayerOpen: false,
 
     playSong: (song, queue) => {
-        const newQueue = queue || [song];
-        const index = newQueue.findIndex((s) => s.id === song.id);
+        const { queue: currentQueue } = get();
+        let newQueue = queue;
+        let index = -1;
+
+        if (!newQueue) {
+            index = currentQueue.findIndex(s => s.id === song.id);
+            if (index >= 0) {
+                newQueue = currentQueue;
+            } else {
+                newQueue = [song];
+                index = 0;
+            }
+        } else {
+            index = newQueue.findIndex((s) => s.id === song.id);
+        }
+
+        const processedSong = {
+            ...song,
+        };
+
         set({
-            currentSong: song,
+            currentSong: processedSong,
             queue: newQueue,
             queueIndex: index >= 0 ? index : 0,
             isPlaying: true,
             progress: 0,
+            isVideoMode: !!processedSong.video_url // Priority to video if it exists
         });
-        saveToStorage({ currentSong: song, queue: newQueue, queueIndex: index >= 0 ? index : 0, progress: 0, volume: get().volume });
+
+        saveToStorage({
+            currentSong: song,
+            queue: newQueue,
+            queueIndex: index >= 0 ? index : 0,
+            progress: 0,
+            volume: get().volume,
+            isVideoMode: get().isVideoMode
+        });
+
         trackRecentlyPlayed(song);
+        incrementPlayCount(song.id);
     },
 
     togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
 
     setProgress: (progress) => {
         set({ progress });
-        const { currentSong, queue, queueIndex, volume } = get();
-        saveToStorage({ currentSong, queue, queueIndex, progress, volume });
+        const { currentSong, queue, queueIndex, volume, isVideoMode } = get();
+        saveToStorage({ currentSong, queue, queueIndex, progress, volume, isVideoMode });
     },
 
     setDuration: (duration) => set({ duration }),
 
     setVolume: (volume) => {
         set({ volume, isMuted: volume === 0 });
-        const { currentSong, queue, queueIndex, progress } = get();
-        saveToStorage({ currentSong, queue, queueIndex, progress, volume });
+        const { currentSong, queue, queueIndex, progress, isVideoMode } = get();
+        saveToStorage({ currentSong, queue, queueIndex, progress, volume, isVideoMode });
+    },
+
+    setVideoMode: (enabled: boolean) => {
+        set({ isVideoMode: enabled });
+        const { currentSong, queue, queueIndex, progress, volume } = get();
+        saveToStorage({ currentSong, queue, queueIndex, progress, volume, isVideoMode: enabled });
     },
 
     toggleMute: () =>
@@ -168,7 +227,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             volume: !state.isMuted ? 0 : state.volume || 0.7,
         })),
 
-    toggleShuffle: () => set((state) => ({ shuffle: !state.shuffle })),
+    toggleShuffle: () => {
+        const { shuffle, queue, queueIndex } = get();
+        const newShuffle = !shuffle;
+
+        if (newShuffle && queue.length > 0) {
+            const indices = Array.from({ length: queue.length }, (_, i) => i)
+                .filter(i => i !== queueIndex);
+
+            for (let i = indices.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [indices[i], indices[j]] = [indices[j], indices[i]];
+            }
+
+            set({ shuffle: true, shuffledOrder: [queueIndex, ...indices] });
+        } else {
+            set({ shuffle: false, shuffledOrder: [] });
+        }
+    },
 
     toggleRepeat: () =>
         set((state) => ({
@@ -176,55 +252,92 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         })),
 
     nextSong: () => {
-        const { queue, queueIndex, shuffle, repeat } = get();
+        const { queue, queueIndex, shuffle, shuffledOrder, repeat, isVideoMode } = get();
         if (queue.length === 0) return;
 
         let nextIndex: number;
-        if (shuffle && queue.length > 1) {
-            // Pick a random index that is NOT the current one
-            let newIndex = queueIndex;
-            while (newIndex === queueIndex) {
-                newIndex = Math.floor(Math.random() * queue.length);
+        if (shuffle && shuffledOrder.length > 0) {
+            const currentOrderIdx = shuffledOrder.indexOf(queueIndex);
+            if (currentOrderIdx < shuffledOrder.length - 1) {
+                nextIndex = shuffledOrder[currentOrderIdx + 1];
+            } else if (repeat === 'all') {
+                const indices = Array.from({ length: queue.length }, (_, i) => i);
+                for (let i = indices.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [indices[i], indices[j]] = [indices[j], indices[i]];
+                }
+                set({ shuffledOrder: indices });
+                nextIndex = indices[0];
+            } else {
+                set({ isPlaying: false, progress: 0 });
+                return;
             }
-            nextIndex = newIndex;
         } else if (queueIndex < queue.length - 1) {
             nextIndex = queueIndex + 1;
         } else if (repeat === 'all') {
             nextIndex = 0;
         } else {
-            // End of queue and no repeat
             set({ isPlaying: false, progress: 0 });
             return;
         }
 
         const nextSong = queue[nextIndex];
+
         set({
             currentSong: nextSong,
             queueIndex: nextIndex,
             isPlaying: true,
             progress: 0,
+            isVideoMode: !!nextSong.video_url // Priority to video
         });
-        saveToStorage({ currentSong: nextSong, queue, queueIndex: nextIndex, progress: 0, volume: get().volume });
+        saveToStorage({
+            currentSong: nextSong,
+            queue,
+            queueIndex: nextIndex,
+            progress: 0,
+            volume: get().volume,
+            isVideoMode: !!nextSong.video_url
+        });
     },
 
     prevSong: () => {
-        const { queue, queueIndex, progress } = get();
+        const { queue, queueIndex, shuffle, shuffledOrder, progress } = get();
         if (queue.length === 0) return;
 
-        // If past 3 seconds, restart current song
         if (progress > 3) {
             set({ progress: 0 });
             return;
         }
 
-        const prevIndex = queueIndex > 0 ? queueIndex - 1 : queue.length - 1;
+        let prevIndex: number;
+        if (shuffle && shuffledOrder.length > 0) {
+            const currentOrderIdx = shuffledOrder.indexOf(queueIndex);
+            if (currentOrderIdx > 0) {
+                prevIndex = shuffledOrder[currentOrderIdx - 1];
+            } else {
+                prevIndex = shuffledOrder[shuffledOrder.length - 1];
+            }
+        } else {
+            prevIndex = queueIndex > 0 ? queueIndex - 1 : queue.length - 1;
+        }
+
+        const prevSong = queue[prevIndex];
+
         set({
-            currentSong: queue[prevIndex],
+            currentSong: prevSong,
             queueIndex: prevIndex,
             isPlaying: true,
             progress: 0,
+            isVideoMode: !!prevSong.video_url
         });
-        saveToStorage({ currentSong: queue[prevIndex], queue, queueIndex: prevIndex, progress: 0, volume: get().volume });
+        saveToStorage({
+            currentSong: prevSong,
+            queue,
+            queueIndex: prevIndex,
+            progress: 0,
+            volume: get().volume,
+            isVideoMode: !!prevSong.video_url
+        });
     },
 
     toggleRightPanel: () =>
@@ -232,8 +345,66 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     setRightPanelOpen: (open) => set({ isRightPanelOpen: open }),
 
+    setMobilePlayerOpen: (open) => set({ isMobilePlayerOpen: open }),
+
     addToQueue: (song) =>
         set((state) => ({ queue: [...state.queue, song] })),
+
+    removeFromQueue: (songId) => {
+        const { queue, queueIndex, currentSong, isVideoMode } = get();
+        const indexToRemove = queue.findIndex(s => s.id === songId);
+        if (indexToRemove === -1) return;
+
+        const newQueue = queue.filter(s => s.id !== songId);
+        let newIndex = queueIndex;
+        let newCurrentSong = currentSong;
+
+        if (indexToRemove === queueIndex) {
+            if (newQueue.length > 0) {
+                const nextIdx = indexToRemove % newQueue.length;
+                newCurrentSong = newQueue[nextIdx];
+                newIndex = nextIdx;
+            } else {
+                newCurrentSong = null;
+                newIndex = -1;
+            }
+        } else if (indexToRemove < queueIndex) {
+            newIndex = queueIndex - 1;
+        }
+
+        set({
+            queue: newQueue,
+            queueIndex: newIndex,
+            currentSong: newCurrentSong,
+            isPlaying: newQueue.length > 0 && indexToRemove === queueIndex ? get().isPlaying : get().isPlaying
+        });
+
+        saveToStorage({
+            currentSong: newCurrentSong,
+            queue: newQueue,
+            queueIndex: newIndex,
+            progress: get().progress,
+            volume: get().volume,
+            isVideoMode
+        });
+    },
+
+    clearQueue: () => {
+        const { currentSong, volume, isVideoMode } = get();
+        const newQueue = currentSong ? [currentSong] : [];
+        set({ queue: newQueue, queueIndex: currentSong ? 0 : -1 });
+
+        saveToStorage({
+            currentSong,
+            queue: newQueue,
+            queueIndex: currentSong ? 0 : -1,
+            progress: get().progress,
+            volume,
+            isVideoMode
+        });
+    },
+
+    setQueue: (queue) => set({ queue }),
 
     restoreFromStorage: () => {
         const saved = loadFromStorage();
@@ -244,7 +415,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
             queueIndex: saved.queueIndex ?? 0,
             progress: saved.progress ?? 0,
             volume: saved.volume ?? 0.7,
-            isPlaying: false, // don't auto-play, user presses play
+            isVideoMode: saved.isVideoMode ?? false,
+            isPlaying: false,
         });
     },
 }));
+
